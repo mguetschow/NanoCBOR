@@ -14,7 +14,7 @@
 #include "nanocbor/config.h"
 #include "nanocbor/nanocbor.h"
 
-#define CBOR_READ_BUFFER_BYTES (1 << 15) // 32kB
+#define CBOR_READ_BUFFER_BYTES (1 << 18) // 256kB
 #define MAX_DEPTH 20
 
 static const struct argp_option cmdline_options[] = {
@@ -232,6 +232,10 @@ int main(int argc, char *argv[])
     }
 
     size_t len = fread(buffer_in, 1, sizeof(buffer_in), fp);
+    if (len == sizeof(buffer_in)) {
+        puts("Error: file too big!");
+        return -1;
+    }
 
     fclose(fp);
     printf("Unpacking %lu bytes...\n", (long unsigned)len);
