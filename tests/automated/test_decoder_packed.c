@@ -258,6 +258,128 @@ static void test_packed_follow_reference_with_indirection(void)
     CU_ASSERT_EQUAL(nanocbor_at_end(&val), true);
 }
 
+#  if NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING
+static void test_packed_integration_tag_splicing(void)
+{
+    nanocbor_value_t val, val2;
+
+    uint8_t i;
+
+    // [1,2,simple(0),5]
+    static const uint8_t cbor[] = { 0x84, 0x01, 0x02, 0xE0, 0x05 };
+
+    // [1115([3,4])]
+    static const uint8_t table[] = { 0x81, 0xD9, 0x04, 0x5B, 0x82, 0x03, 0x04 };
+
+    nanocbor_decoder_init_packed_table(&val, cbor, sizeof(cbor), table, sizeof(table));
+
+    CU_ASSERT_EQUAL(nanocbor_get_type(&val), NANOCBOR_TYPE_ARR);
+    CU_ASSERT_EQUAL(nanocbor_enter_array(&val, &val2), NANOCBOR_OK);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 4);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 1);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 3);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 2);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 2); // todo: or already 3?
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 3);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 2);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 4);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 1);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 5);
+    CU_ASSERT_EQUAL(nanocbor_at_end(&val2), true);
+    CU_ASSERT_EQUAL(nanocbor_leave_container(&val, &val2), NANOCBOR_OK);
+
+    CU_ASSERT_EQUAL(nanocbor_at_end(&val), true);
+}
+
+static void test_packed_integration_tag_splicing_packed(void)
+{
+    nanocbor_value_t val, val2;
+
+    uint8_t i;
+
+    // [1,2,simple(0),5]
+    static const uint8_t cbor[] = { 0x84, 0x01, 0x02, 0xE0, 0x05 };
+
+    // [1115(simple(1)),[3,4]]
+    static const uint8_t table[] = { 0x82, 0xD9, 0x04, 0x5B, 0xE1, 0x82, 0x03, 0x04 };
+
+    nanocbor_decoder_init_packed_table(&val, cbor, sizeof(cbor), table, sizeof(table));
+
+    CU_ASSERT_EQUAL(nanocbor_get_type(&val), NANOCBOR_TYPE_ARR);
+    CU_ASSERT_EQUAL(nanocbor_enter_array(&val, &val2), NANOCBOR_OK);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 4);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 1);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 3);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 2);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 2); // todo: or already 3?
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 3);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 2);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 4);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 1);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 5);
+    CU_ASSERT_EQUAL(nanocbor_at_end(&val2), true);
+    CU_ASSERT_EQUAL(nanocbor_leave_container(&val, &val2), NANOCBOR_OK);
+
+    CU_ASSERT_EQUAL(nanocbor_at_end(&val), true);
+}
+
+static void test_packed_integration_tag_splicing_nested(void)
+{
+    nanocbor_value_t val, val2;
+
+    uint8_t i;
+
+    // [1,2,simple(0),5]
+    static const uint8_t cbor[] = { 0x84, 0x01, 0x02, 0xE0, 0x05 };
+
+    // [1115([simple(1),4,simple(1)]), 1115([3,3])]
+    static const uint8_t table[] = { 0x82, 0xD9, 0x04, 0x5B, 0x83, 0xE1, 0x04, 0xE1, 0xD9, 0x04, 0x5B, 0x82, 0x03, 0x03 };
+
+    nanocbor_decoder_init_packed_table(&val, cbor, sizeof(cbor), table, sizeof(table));
+
+    CU_ASSERT_EQUAL(nanocbor_get_type(&val), NANOCBOR_TYPE_ARR);
+    CU_ASSERT_EQUAL(nanocbor_enter_array(&val, &val2), NANOCBOR_OK);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 4);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 1);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 3);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 2);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 2);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 3);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 4);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 3);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 3);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 4);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 2);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 3);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 2);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 3);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 1);
+    CU_ASSERT_EQUAL(nanocbor_get_uint8(&val2, &i), 1);
+    CU_ASSERT_EQUAL(i, 5);
+    CU_ASSERT_EQUAL(nanocbor_at_end(&val2), true);
+    CU_ASSERT_EQUAL(nanocbor_leave_container(&val, &val2), NANOCBOR_OK);
+
+    CU_ASSERT_EQUAL(nanocbor_at_end(&val), true);
+}
+#  endif
+
 static void test_packed_enable(void)
 {
     nanocbor_value_t val, val2, val3;
@@ -625,6 +747,20 @@ const test_t tests_decoder_packed[] = {
         .f = test_packed_follow_reference_with_indirection,
         .n = "CBOR packed follow indirect reference test",
     },
+#  if NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING
+    {
+        .f = test_packed_integration_tag_splicing,
+        .n = "CBOR packed splicing integration tag test",
+    },
+    {
+        .f = test_packed_integration_tag_splicing_packed,
+        .n = "CBOR packed splicing integration tag with packed array test",
+    },
+    {
+        .f = test_packed_integration_tag_splicing_nested,
+        .n = "CBOR packed nested splicing integration tag test",
+    },
+#  endif
     {
         .f = test_packed_enable,
         .n = "CBOR packed enable support test",

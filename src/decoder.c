@@ -32,6 +32,9 @@ void nanocbor_decoder_init(nanocbor_value_t *value, const uint8_t *buf,
     /* no need to initialize value->remaining since this is not a container */
 #if NANOCBOR_DECODE_PACKED_ENABLED
     memset(value->shared_item_tables, 0, sizeof(value->shared_item_tables));
+#  if NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING
+    memset(value->integration_splicing, 0, sizeof(value->integration_splicing));
+#  endif
 #endif
 }
 
@@ -136,6 +139,21 @@ static int _get_uint64(const nanocbor_value_t *cvalue, uint64_t *value,
     return (int)(1 + bytes);
 }
 
+static inline bool _check_flag(const nanocbor_value_t *it, const uint8_t flag)
+{
+    return it->flags & flag;
+}
+
+static inline void _set_flag(nanocbor_value_t *it, const uint8_t flag)
+{
+    it->flags |= flag;
+}
+
+static inline void _clear_flag(nanocbor_value_t *it, const uint8_t flag)
+{
+    it->flags &= ~flag;
+}
+
 #if NANOCBOR_DECODE_PACKED_ENABLED
 
 /* forward declarations of functions used by packed CBOR handling */
@@ -166,6 +184,62 @@ static inline void _packed_set_enabled(nanocbor_value_t *value, bool enabled)
     }
 }
 
+static inline void _packed_integration_splicing_copy_information(nanocbor_value_t *dest, const nanocbor_value_t *src)
+{
+#if NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING
+    memcpy(dest->integration_splicing, src->integration_splicing, sizeof(dest->integration_splicing));
+#endif
+}
+
+static inline bool _packed_integration_splicing_postprocess(nanocbor_value_t *outer, nanocbor_value_t *inner)
+{
+#if NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING
+    _packed_integration_splicing_copy_information(outer, inner);
+
+    struct nanocbor_packed_integration_splicing *splicing = outer->integration_splicing;
+    const uint8_t max = NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING_NESTING_MAX;
+
+    /* find deepest splicing tag */
+    uint8_t i = 0;
+    for (i=0; i<max; i++) {
+        if (splicing[max-i-1].len != 0) {
+            i = max-i-1;
+            break;
+        }
+    }
+    if (i == max) return false;
+
+    /* increase deepest idx */
+    bool increased = false;
+    bool all_deeper_are_seen_first_time = true;
+    for (uint8_t j=0; j<=i; j++) {
+        all_deeper_are_seen_first_time &= splicing[i-j].idx == 0;
+        if (all_deeper_are_seen_first_time) outer->remaining += splicing[i-j].len - 1;
+
+        if (!increased) splicing[i-j].idx += 1;
+        if (splicing[i-j].idx < splicing[i-j].len) {
+            if (!increased) {
+                outer->remaining -= 1;
+                increased = true;
+            }
+        }
+        else {
+            splicing[i-j].idx = 0;
+            splicing[i-j].len = 0;
+        }
+    }
+
+    /* reset all splicing integration tag len information, so it can be refilled on next _packed_handle */
+    for (uint8_t j=0; j<=i; j++) {
+        splicing[j].len = 0;
+    }
+
+    return increased;
+#else
+    return false;
+#endif /* NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING */
+}
+
 /**
  * Copy active set of packing tables from @p src to @p dest.
  *
@@ -176,6 +250,9 @@ static inline void _packed_copy_tables(nanocbor_value_t *dest, const nanocbor_va
 {
     memcpy(dest->shared_item_tables, src->shared_item_tables, sizeof(dest->shared_item_tables));
     dest->num_active_tables = src->num_active_tables;
+
+    // todo: maybe rename outer function to reflect it is not only copying packing tables
+    _packed_integration_splicing_copy_information(dest, src);
 }
 
 static inline int _enter_array_unpacked(const nanocbor_value_t *it, nanocbor_value_t *array)
@@ -261,12 +338,15 @@ static inline int _enter_array_unpacked(const nanocbor_value_t *it, nanocbor_val
  *
  * @param[inout]    res  return value of the enclosing function
  */
-#define _PACKED_HANDLE_END(res)                                         \
-    if (__outer != NULL && res >= NANOCBOR_OK) {                        \
-        int __res = _skip_limited(__outer, NANOCBOR_RECURSION_MAX-1);   \
-        if (__res != NANOCBOR_OK) res = __res;                          \
+#define _PACKED_HANDLE_END(res)                                             \
+    if (__outer != NULL && res >= NANOCBOR_OK) {                            \
+        if (!_packed_integration_splicing_postprocess(__outer, &__inner)) { \
+            int __res = _skip_limited(__outer, NANOCBOR_RECURSION_MAX-1);   \
+            if (__res != NANOCBOR_OK) res = __res;                          \
+        }                                                                   \
     }
 
+// todo: using remaining does not work with infinite length arrays
 
 /**
  * Macro to avoid code duplication in decoder function implementations.
@@ -427,6 +507,50 @@ static int _packed_consume_table_definition_113(nanocbor_value_t *cvalue, uint8_
     return NANOCBOR_OK;
 }
 
+static int _packed_handle_integration_tags(nanocbor_value_t *cvalue, uint8_t limit)
+{
+    int ctype = __get_type(cvalue);
+    // todo: should probably be behind extra feature flag
+    if (ctype == NANOCBOR_TYPE_TAG) {
+        uint64_t tag = 0;
+        int res = _get_uint64(cvalue, &tag, NANOCBOR_SIZE_WORD, ctype);
+        if (res < 0) {
+            /* tag number could not be decoded */
+            return NANOCBOR_ERR_PACKED_FORMAT;
+        }
+#if NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING
+        if (tag == NANOCBOR_TAG_PACKED_INTEGRATION_SPLICING) {
+            /* handle tag 1115 (splicing integration tag) */
+            cvalue->cur += res;
+
+            /* content of tag 1115 may itself be packed */
+            int res = _packed_handle(cvalue, limit-1);
+            if (res != NANOCBOR_OK && res != NANOCBOR_NOT_FOUND) return res;
+
+            res = _enter_array_unpacked(cvalue, cvalue);
+            if (res < 0) {
+                return res == NANOCBOR_ERR_RECURSION ? res : NANOCBOR_ERR_PACKED_FORMAT;
+            }
+
+            struct nanocbor_packed_integration_splicing *splicing;
+            for (uint8_t i=0; i<NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING_NESTING_MAX; i++) {
+                splicing = &cvalue->integration_splicing[i];
+                if (splicing->len == 0) break;
+            }
+            splicing->len = cvalue->remaining;
+
+            /* splicing->idx will be updated in _postprocess */
+            for (uint8_t j=0; j<splicing->idx; j++) {
+                res = _skip_limited(cvalue, limit);
+                if (res < 0) return res;
+            }
+        }
+#endif /* NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING */
+    }
+    return NANOCBOR_OK;
+}
+
+
 /**
  * @brief Follow a packed CBOR shared item reference.
  *
@@ -480,7 +604,9 @@ static int _packed_follow_reference(nanocbor_value_t *cvalue, uint64_t idx, uint
             }
             /* only retain common tables, i.e., ones that were defined up to and including i */
             cvalue->num_active_tables = num-i;
-            return NANOCBOR_OK;
+
+            /* handle integration tags */
+            return _packed_handle_integration_tags(cvalue, limit);
         } else {
 next_table:
             idx -= table_size;
@@ -573,8 +699,12 @@ static int _packed_handle(nanocbor_value_t *cvalue, uint8_t limit)
 
     if (ret == NANOCBOR_OK) {
         /* recursively unpack on success, decrement limit to bound recursion and prevent infinite loops */
+        // todo: this is probably where we have to keep track of remaining items among nested splicing tags
+
+
         ret = _packed_handle(cvalue, limit-1);
         return (ret < 0 && ret != NANOCBOR_NOT_FOUND) ? ret : NANOCBOR_OK;
+        // todo: btw, this could be while loop instead of recursion
     }
     return ret;
 }

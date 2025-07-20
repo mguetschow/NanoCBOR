@@ -49,6 +49,23 @@ extern "C" {
 #endif
 
 /**
+ * @brief Enable decoding support for packed CBOR splicing integration tags
+ * transparent to the application.
+ */
+#ifndef NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING
+#define NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING 1
+#endif
+
+/**
+ * @brief Maximum nesting level of splicing integration tags.
+ *
+ * @note only applies when @ref NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING is set to 1
+ */
+#ifndef NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING_NESTING_MAX
+#define NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING_NESTING_MAX 3
+#endif
+
+/**
  * @brief library providing htonll, be64toh or equivalent. Must also provide
  * the reverse operation (ntohll, htobe64 or equivalent)
  */

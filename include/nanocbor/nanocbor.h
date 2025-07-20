@@ -101,8 +101,9 @@ extern "C" {
 #define NANOCBOR_TAG_BIGNUMS_N (0x3) /**< Negative bignum */
 #define NANOCBOR_TAG_DEC_FRAC (0x4) /**< Decimal Fraction */
 #define NANOCBOR_TAG_BIGFLOATS (0x5) /**< Bigfloat */
-#define NANOCBOR_TAG_PACKED_REF_SHARED (0x6) /**< Packed CBOR: reference to shared */
-#define NANOCBOR_TAG_PACKED_TABLE (0x71) /**< Packed CBOR: table setup */
+#define NANOCBOR_TAG_PACKED_REF_SHARED (6) /**< Packed CBOR: reference to shared */
+#define NANOCBOR_TAG_PACKED_TABLE (113) /**< Packed CBOR: table setup */
+#define NANOCBOR_TAG_PACKED_INTEGRATION_SPLICING (1115) /**< Packed CBOR: splicing integration tag */
 /** @} */
 
 /**
@@ -178,6 +179,13 @@ typedef struct nanocbor_value {
         const uint8_t *start;   /**< Start of table definition, NULL if non-existent */
         size_t len;             /**< Length in bytes of table definition */
     } shared_item_tables[NANOCBOR_DECODE_PACKED_NESTED_TABLES_MAX];
+#  if NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING
+    /** array of information about nested splicing tags, filled from 0 to NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING_NESTING_MAX */
+    struct nanocbor_packed_integration_splicing {
+        uint8_t idx;   /**< Next position in sliced array */
+        uint8_t len;   /**< Number of elements in the sliced array. 0 means no sliced array at that level */
+    } integration_splicing[NANOCBOR_DECODE_PACKED_INTEGRATION_SPLICING_NESTING_MAX];
+#  endif
 #endif
 } nanocbor_value_t;
 
