@@ -447,6 +447,37 @@ static void test_packed_table_setup_nested(void)
     CU_ASSERT_EQUAL(nanocbor_at_end(&val), true);
 }
 
+static void test_packed_table_setup_nested_reference(void)
+{
+    nanocbor_value_t val, val2, val3;
+    bool b;
+
+    // 113([[true, simple(0)], [simple(1), 113([[false], [simple(0), simple(1), simple(2)]])]])
+    static const uint8_t cbor[] = { 0xD8, 0x71, 0x82, 0x82, 0xF5, 0xE0, 0x82, 0xE1, 0xD8, 0x71, 0x82, 0x81, 0xF4, 0x83, 0xE0, 0xE1, 0xE2 };
+    // unpacked: [true, [false, true, true]]
+
+    nanocbor_decoder_init_packed(&val, cbor, sizeof(cbor));
+    CU_ASSERT_EQUAL(nanocbor_get_type(&val), NANOCBOR_TYPE_ARR);
+    CU_ASSERT_EQUAL(nanocbor_enter_array(&val, &val2), NANOCBOR_OK);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val2), 2);
+    CU_ASSERT_EQUAL(nanocbor_get_bool(&val2, &b), NANOCBOR_OK);
+    CU_ASSERT_EQUAL(b, true);
+    CU_ASSERT_EQUAL(nanocbor_get_type(&val2), NANOCBOR_TYPE_ARR);
+    CU_ASSERT_EQUAL(nanocbor_enter_array(&val2, &val3), NANOCBOR_OK);
+    CU_ASSERT_EQUAL(nanocbor_array_items_remaining(&val3), 3);
+    CU_ASSERT_EQUAL(nanocbor_get_bool(&val3, &b), NANOCBOR_OK);
+    CU_ASSERT_EQUAL(b, false);
+    CU_ASSERT_EQUAL(nanocbor_get_bool(&val3, &b), NANOCBOR_OK);
+    CU_ASSERT_EQUAL(b, true);
+    CU_ASSERT_EQUAL(nanocbor_get_bool(&val3, &b), NANOCBOR_OK);
+    CU_ASSERT_EQUAL(b, true);
+    CU_ASSERT_EQUAL(nanocbor_at_end(&val3), true);
+    CU_ASSERT_EQUAL(nanocbor_leave_container(&val2, &val3), NANOCBOR_OK);
+    CU_ASSERT_EQUAL(nanocbor_at_end(&val2), true);
+    CU_ASSERT_EQUAL(nanocbor_leave_container(&val, &val2), NANOCBOR_OK);
+    CU_ASSERT_EQUAL(nanocbor_at_end(&val), true);
+}
+
 static void test_packed_table_setup_nested_within_table(void)
 {
     nanocbor_value_t val;
@@ -648,6 +679,10 @@ const test_t tests_decoder_packed[] = {
     {
         .f = test_packed_table_setup_nested,
         .n = "CBOR packed nested shared item tables test",
+    },
+    {
+        .f = test_packed_table_setup_nested_reference,
+        .n = "CBOR packed nested shared item table with reference test",
     },
     {
         .f = test_packed_table_setup_nested_within_table,
